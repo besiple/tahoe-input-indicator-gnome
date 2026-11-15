@@ -7,6 +7,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
@@ -161,7 +162,8 @@ export default class TahoeInputIndicatorExtension extends Extension {
         if (!current) return;
 
         const raw = current.shortName || current.id || '??';
-        const code = raw.toUpperCase().slice(0, 3); // 'RU', 'EN'
+        let code = raw.toUpperCase().slice(0, 2); // 'RU', 'EN'
+        if (code === 'US') code = 'EN';
 
         this._showMicroPill(code);
     }
@@ -208,7 +210,8 @@ export default class TahoeInputIndicatorExtension extends Extension {
             can_focus: false,
             style: 'background-color: rgba(16, 16, 20, 0.82); ' +
                    'border-radius: 6px; ' +
-                   'padding: 2px 7px; ' +
+                   'padding: 2px 8px; ' +
+                   'min-width: 32px; ' +
                    'box-shadow: 0 3px 12px rgba(0, 0, 0, 0.40);',
         });
 
@@ -222,8 +225,14 @@ export default class TahoeInputIndicatorExtension extends Extension {
             style: 'font-weight: 700; ' +
                    'font-size: 9.5pt; ' +
                    'color: rgba(255, 255, 255, 0.95); ' +
-                   'letter-spacing: 0.6px;',
+                   'letter-spacing: 0.8px;',
         });
+
+        // Crucial: Disable Pango ellipsization so short codes never become '...'
+        if (label.clutter_text) {
+            label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+            label.clutter_text.line_wrap = false;
+        }
 
         pill.set_child(label);
         pill.set_pivot_point(0.5, 0.5);
