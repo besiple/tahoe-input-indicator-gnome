@@ -138,8 +138,8 @@ export default class VaporInputIndicatorExtension extends Extension {
 
     _triggerSteam() {
         const now = GLib.get_monotonic_time();
-        // 50ms debounce
-        if (now - this._lastSpawnTime < 50000) return;
+        // 40ms debounce
+        if (now - this._lastSpawnTime < 40000) return;
         this._lastSpawnTime = now;
 
         const current = this._isManager ? this._isManager.currentSource : null;
@@ -155,70 +155,86 @@ export default class VaporInputIndicatorExtension extends Extension {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
         const [px, py] = global.get_pointer();
-        const startX = px + 14;
-        const startY = py - 18;
+        const startX = px + 12;
+        const startY = py - 14;
 
-        // 1. Soft steam cloud puff behind text
-        const puff = new St.Bin({
-            style_class: 'vapor-puff',
-            reactive: false,
-            can_focus: false,
-            style: 'background-color: rgba(220, 240, 255, 0.22); ' +
-                   'border-radius: 999px; ' +
-                   'width: 36px; height: 36px; ' +
-                   'box-shadow: 0 0 24px rgba(180, 220, 255, 0.65);',
-        });
-        puff.set_pivot_point(0.5, 0.5);
-        puff.set_position(startX - 6, startY - 4);
-        puff.scale_x = 0.4;
-        puff.scale_y = 0.4;
-        puff.opacity = 0;
+        // 1. Organic Steam Wisps (струйки и завитки пара)
+        const wispConfigs = [
+            { offsetX: -2, offsetY: 2,  w: 6, h: 14, driftX: -6, driftY: -32, dur: 480, delay: 0 },
+            { offsetX: 7,  offsetY: -3, w: 8, h: 18, driftX: 3,  driftY: -40, dur: 530, delay: 25 },
+            { offsetX: 15, offsetY: 3,  w: 5, h: 12, driftX: 7,  driftY: -28, dur: 460, delay: 45 },
+        ];
 
-        Main.uiGroup.add_child(puff);
+        for (const cfg of wispConfigs) {
+            const wisp = new St.Bin({
+                style_class: 'vapor-wisp',
+                reactive: false,
+                can_focus: false,
+                style: `background-color: rgba(225, 240, 255, 0.25); ` +
+                       `border-radius: 4px 6px 3px 5px; ` +
+                       `width: ${cfg.w}px; height: ${cfg.h}px; ` +
+                       `box-shadow: 0 -2px 10px rgba(180, 220, 255, 0.55);`,
+            });
+            wisp.set_pivot_point(0.5, 1.0);
+            wisp.set_position(startX + cfg.offsetX, startY + cfg.offsetY);
+            wisp.scale_x = 0.5;
+            wisp.scale_y = 0.5;
+            wisp.opacity = 0;
 
-        // 2. Kill-effect / Steam text actor
+            Main.uiGroup.add_child(wisp);
+
+            const startRise = () => {
+                wisp.ease({
+                    opacity: 200,
+                    scale_x: 1.0,
+                    scale_y: 1.0,
+                    duration: 65,
+                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                    onComplete: () => {
+                        wisp.ease({
+                            opacity: 0,
+                            scale_x: 1.6,
+                            scale_y: 2.3, // elongates vertically like real thermal steam
+                            x: startX + cfg.offsetX + cfg.driftX + (Math.random() * 4 - 2),
+                            y: startY + cfg.offsetY + cfg.driftY,
+                            duration: cfg.dur,
+                            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                            onComplete: () => wisp.destroy(),
+                        });
+                    },
+                });
+            };
+
+            if (cfg.delay > 0) {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, cfg.delay, () => {
+                    startRise();
+                    return GLib.SOURCE_REMOVE;
+                });
+            } else {
+                startRise();
+            }
+        }
+
+        // 2. Compact Glowing Steam Text (en / ru)
         const label = new St.Label({
             style_class: 'vapor-text',
             text: text,
             reactive: false,
             can_focus: false,
-            style: 'font-weight: 900; ' +
-                   'font-size: 15pt; ' +
+            style: 'font-weight: 800; ' +
+                   'font-size: 11.5pt; ' +
                    'color: #ffffff; ' +
-                   'text-shadow: 0 0 10px rgba(255, 255, 255, 0.95), ' +
-                   '0 0 20px rgba(180, 220, 255, 0.85), ' +
-                   '0 -4px 14px rgba(140, 190, 255, 0.6);',
+                   'text-shadow: 0 0 6px rgba(255, 255, 255, 0.95), ' +
+                   '0 -2px 12px rgba(170, 215, 255, 0.8), ' +
+                   '0 -4px 18px rgba(130, 185, 255, 0.5);',
         });
         label.set_pivot_point(0.5, 0.5);
         label.set_position(startX, startY);
-        label.scale_x = 0.55;
-        label.scale_y = 0.55;
+        label.scale_x = 0.7;
+        label.scale_y = 0.7;
         label.opacity = 0;
 
         Main.uiGroup.add_child(label);
-
-        // Animation Phase 1: Snap into existence (60ms)
-        puff.ease({
-            opacity: 180,
-            scale_x: 1.0,
-            scale_y: 1.0,
-            duration: 60,
-            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            onComplete: () => {
-                // Phase 2: Steam expands, rises upward and dissolves
-                const driftX = (Math.random() * 12) - 6;
-                puff.ease({
-                    opacity: 0,
-                    scale_x: 2.8,
-                    scale_y: 2.8,
-                    x: startX - 6 + driftX,
-                    y: startY - 65,
-                    duration: 600,
-                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-                    onComplete: () => puff.destroy(),
-                });
-            },
-        });
 
         label.ease({
             opacity: 255,
@@ -227,15 +243,14 @@ export default class VaporInputIndicatorExtension extends Extension {
             duration: 60,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
-                // Phase 2: Ascend and evaporate into thin air like bullet smoke / steam
-                const driftX = (Math.random() * 10) - 5;
+                const driftX = (Math.random() * 6) - 3;
                 label.ease({
                     opacity: 0,
-                    scale_x: 1.45,
-                    scale_y: 1.45,
+                    scale_x: 1.25,
+                    scale_y: 1.25,
                     x: startX + driftX,
-                    y: startY - 50,
-                    duration: 620,
+                    y: startY - 26,
+                    duration: 480,
                     mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
                     onComplete: () => label.destroy(),
                 });
