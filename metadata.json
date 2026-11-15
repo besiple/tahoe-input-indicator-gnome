@@ -1,0 +1,16 @@
+{
+  "name": "macOS Tahoe Input Indicator",
+  "description": "Authentic macOS Tahoe/Sonoma style floating input source indicator at caret/cursor and instant switching without the center popup.",
+  "uuid": "tahoe-input-indicator@besiple",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "url": "https://github.com/besiple/tahoe-input-indicator-gnome",
+  "version": 1
+}

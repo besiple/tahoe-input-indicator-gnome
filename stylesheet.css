@@ -1,0 +1,33 @@
+/* macOS Tahoe / Sonoma Input Source Indicator */
+
+.tahoe-indicator-container {
+    background-color: rgba(22, 22, 26, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.20);
+    border-radius: 14px;
+    padding: 6px 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tahoe-indicator-content {
+    spacing: 8px;
+}
+
+.tahoe-indicator-code {
+    font-size: 13pt;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+}
+
+.tahoe-indicator-divider {
+    background-color: rgba(255, 255, 255, 0.25);
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+}
+
+.tahoe-indicator-name {
+    font-size: 10.5pt;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.75);
+}
