@@ -1,16 +1,15 @@
-/* macOS Tahoe Floating Input Indicator */
+/* macOS Tahoe Borderless Micro-Capsule Input Indicator */
 
-.tahoe-vapor-pill {
-    background-color: rgba(18, 18, 22, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-radius: 8px;
-    padding: 3px 8px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+.tahoe-micro-pill {
+    background-color: rgba(16, 16, 20, 0.82);
+    border-radius: 6px;
+    padding: 2px 7px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.40);
 }
 
-.tahoe-vapor-label {
-    font-size: 10.5pt;
-    font-weight: 800;
-    color: #ffffff;
-    letter-spacing: 0.5px;
+.tahoe-micro-label {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    letter-spacing: 0.6px;
 }

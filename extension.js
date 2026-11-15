@@ -16,6 +16,9 @@ export default class TahoeInputIndicatorExtension extends Extension {
         this._signals = [];
         this._lastSpawnTime = 0;
         this._origPopupShow = null;
+        this._activePill = null;
+        this._activeLabel = null;
+        this._fadeTimeoutId = null;
 
         this._setupKeybindings();
         this._connectSignals();
@@ -26,8 +29,21 @@ export default class TahoeInputIndicatorExtension extends Extension {
     disable() {
         this._disconnectSignals();
         this._restoreKeybindings();
+        this._cleanupPill();
 
         console.log('[macOS Tahoe Input Indicator] Extension disabled');
+    }
+
+    _cleanupPill() {
+        if (this._fadeTimeoutId) {
+            GLib.source_remove(this._fadeTimeoutId);
+            this._fadeTimeoutId = null;
+        }
+        if (this._activePill) {
+            this._activePill.destroy();
+            this._activePill = null;
+            this._activeLabel = null;
+        }
     }
 
     _setupKeybindings() {
@@ -138,8 +154,7 @@ export default class TahoeInputIndicatorExtension extends Extension {
 
     _triggerIndicator() {
         const now = GLib.get_monotonic_time();
-        // 40ms debounce
-        if (now - this._lastSpawnTime < 40000) return;
+        if (now - this._lastSpawnTime < 35000) return;
         this._lastSpawnTime = now;
 
         const current = this._isManager ? this._isManager.currentSource : null;
@@ -148,71 +163,125 @@ export default class TahoeInputIndicatorExtension extends Extension {
         const raw = current.shortName || current.id || '??';
         const code = raw.toUpperCase().slice(0, 3); // 'RU', 'EN'
 
-        this._spawnCapsule(code);
+        this._showMicroPill(code);
     }
 
-    _spawnCapsule(text) {
+    _showMicroPill(text) {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
         const [px, py] = global.get_pointer();
         const startX = px + 12;
-        const startY = py - 14;
+        const startY = py - 10;
 
-        // Clean, compact macOS Tahoe / Dynamic capsule
+        // Rapid switch: if already visible, pulse in place
+        if (this._activePill && this._activeLabel && this._activePill.get_parent() && this._activePill.opacity > 60) {
+            if (this._fadeTimeoutId) {
+                GLib.source_remove(this._fadeTimeoutId);
+                this._fadeTimeoutId = null;
+            }
+
+            this._activeLabel.text = text;
+            this._activePill.remove_all_transitions();
+            this._activePill.set_position(startX, startY);
+            this._activePill.opacity = 255;
+            this._activePill.scale_x = 1.20;
+            this._activePill.scale_y = 1.20;
+
+            this._activePill.ease({
+                scale_x: 1.0,
+                scale_y: 1.0,
+                duration: 65,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onComplete: () => {
+                    this._startFloatAndFade(this._activePill, startX, startY);
+                },
+            });
+            return;
+        }
+
+        this._cleanupPill();
+
+        // Ultra-compact, borderless obsidian glass micro-capsule
         const pill = new St.Bin({
-            style_class: 'tahoe-vapor-pill',
+            style_class: 'tahoe-micro-pill',
             reactive: false,
             can_focus: false,
-            style: 'background-color: rgba(18, 18, 22, 0.88); ' +
-                   'border: 1px solid rgba(255, 255, 255, 0.22); ' +
-                   'border-radius: 8px; ' +
-                   'padding: 3px 8px; ' +
-                   'box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);',
+            style: 'background-color: rgba(16, 16, 20, 0.82); ' +
+                   'border-radius: 6px; ' +
+                   'padding: 2px 7px; ' +
+                   'box-shadow: 0 3px 12px rgba(0, 0, 0, 0.40);',
         });
 
         const label = new St.Label({
-            style_class: 'tahoe-vapor-label',
+            style_class: 'tahoe-micro-label',
             text: text,
             reactive: false,
             can_focus: false,
             y_align: Clutter.ActorAlign.CENTER,
             x_align: Clutter.ActorAlign.CENTER,
-            style: 'font-weight: 800; ' +
-                   'font-size: 10.5pt; ' +
-                   'color: #ffffff; ' +
-                   'letter-spacing: 0.5px;',
+            style: 'font-weight: 700; ' +
+                   'font-size: 9.5pt; ' +
+                   'color: rgba(255, 255, 255, 0.95); ' +
+                   'letter-spacing: 0.6px;',
         });
 
         pill.set_child(label);
         pill.set_pivot_point(0.5, 0.5);
         pill.set_position(startX, startY);
-        pill.scale_x = 0.75;
-        pill.scale_y = 0.75;
+        pill.scale_x = 0.65;
+        pill.scale_y = 0.65;
         pill.opacity = 0;
 
         Main.uiGroup.add_child(pill);
 
-        // Phase 1: Crisp pop in (65ms)
+        this._activePill = pill;
+        this._activeLabel = label;
+
+        // Phase 1: Micro-spring pop in (60ms)
         pill.ease({
             opacity: 255,
-            scale_x: 1.0,
-            scale_y: 1.0,
-            duration: 65,
+            scale_x: 1.04,
+            scale_y: 1.04,
+            duration: 60,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
-                // Phase 2: Smooth upward float & clean evaporate (480ms)
-                const driftX = (Math.random() * 4) - 2;
                 pill.ease({
-                    opacity: 0,
-                    scale_x: 1.15,
-                    scale_y: 1.15,
-                    x: startX + driftX,
-                    y: startY - 26,
-                    duration: 480,
-                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-                    onComplete: () => pill.destroy(),
+                    scale_x: 1.0,
+                    scale_y: 1.0,
+                    duration: 35,
+                    mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                    onComplete: () => {
+                        this._startFloatAndFade(pill, startX, startY);
+                    },
                 });
             },
+        });
+    }
+
+    _startFloatAndFade(pill, originX, originY) {
+        // Hold for 120ms, then float upward and dissolve gracefully
+        this._fadeTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 120, () => {
+            this._fadeTimeoutId = null;
+            if (!pill || !pill.get_parent()) return GLib.SOURCE_REMOVE;
+
+            const driftX = (Math.random() * 4) - 2;
+            pill.ease({
+                opacity: 0,
+                scale_x: 1.08,
+                scale_y: 1.08,
+                x: originX + driftX,
+                y: originY - 18,
+                duration: 440,
+                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                onComplete: () => {
+                    if (this._activePill === pill) {
+                        this._cleanupPill();
+                    } else {
+                        pill.destroy();
+                    }
+                },
+            });
+            return GLib.SOURCE_REMOVE;
         });
     }
 }
