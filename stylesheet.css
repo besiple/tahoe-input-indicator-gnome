@@ -1,11 +1,11 @@
-/* Boing Cloud Animated Input Indicator */
+/* Clean Minimalist Boing Cloud Input Indicator (No glow aura, no steam particles) */
 
 .boing-cloud {
-    background-color: rgba(22, 25, 34, 0.88);
+    background-color: rgba(22, 25, 34, 0.90);
     border-radius: 12px;
     padding: 3px 10px;
     min-width: 32px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 12px rgba(180, 215, 255, 0.30);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
 .boing-label {
@@ -13,5 +13,4 @@
     font-weight: 800;
     color: #ffffff;
     letter-spacing: 0.8px;
-    text-shadow: 0 0 6px rgba(255, 255, 255, 0.40);
 }

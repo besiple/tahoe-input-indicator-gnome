@@ -33,7 +33,7 @@ export default class BoingIndicatorImpl {
     enable() {
         this._setupKeybindings();
         this._connectSignals();
-        console.log('[Boing Cloud Indicator] Implementation active with cursor follow & hold physics');
+        console.log('[Boing Cloud Indicator] Clean minimalist style active (no glow, no steam particles)');
     }
 
     disable() {
@@ -201,7 +201,7 @@ export default class BoingIndicatorImpl {
                 this._wasHeld = true;
             }
 
-            // Quick squash-and-stretch pulse without fighting position follow
+            // Clean in-place squash & stretch pulse
             this._activeCloud.remove_all_transitions();
             this._activeCloud.opacity = 255;
             this._activeCloud.scale_x = 1.25;
@@ -234,16 +234,16 @@ export default class BoingIndicatorImpl {
         this._spawnTime = GLib.get_monotonic_time();
         this._wasHeld = isModifierHeld;
 
-        // Fluffy borderless cloud container
+        // Clean borderless dark cloud capsule (no glow aura)
         const cloud = new St.Bin({
             style_class: 'boing-cloud',
             reactive: false,
             can_focus: false,
-            style: 'background-color: rgba(22, 25, 34, 0.88); ' +
+            style: 'background-color: rgba(22, 25, 34, 0.90); ' +
                    'border-radius: 12px; ' +
                    'padding: 3px 10px; ' +
                    'min-width: 32px; ' +
-                   'box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 12px rgba(180, 215, 255, 0.30);',
+                   'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);',
         });
 
         const label = new St.Label({
@@ -256,8 +256,7 @@ export default class BoingIndicatorImpl {
             style: 'font-weight: 800; ' +
                    'font-size: 9.5pt; ' +
                    'color: #ffffff; ' +
-                   'letter-spacing: 0.8px; ' +
-                   'text-shadow: 0 0 6px rgba(255, 255, 255, 0.40);',
+                   'letter-spacing: 0.8px;',
         });
 
         if (label.clutter_text) {
@@ -363,19 +362,16 @@ export default class BoingIndicatorImpl {
 
             if (isModifierHeld) {
                 this._wasHeld = true;
-                // Held down: cancel any auto-poof
                 if (this._holdTimeoutId) {
                     GLib.source_remove(this._holdTimeoutId);
                     this._holdTimeoutId = null;
                 }
             } else if (this._wasHeld) {
-                // Key released after hold: trigger BAH poof!
                 this._wasHeld = false;
                 this._stopFollowLoop();
                 this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
                 return GLib.SOURCE_REMOVE;
             } else if (elapsedMs > 280 && !this._holdTimeoutId) {
-                // Quick tap elapsed: trigger BAH poof!
                 this._stopFollowLoop();
                 this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
                 return GLib.SOURCE_REMOVE;
@@ -395,18 +391,14 @@ export default class BoingIndicatorImpl {
     _triggerBahPoof(cloud, originX, originY) {
         if (!cloud || !cloud.get_parent()) return;
 
-        // Spawn 3 tiny comic poof micro-bubbles
-        this._spawnPoofBubbles(originX, originY);
-
-        // "BAH!" burst: expands quickly and pops away
+        // Clean pop & dissolve without steam particles
         cloud.remove_all_transitions();
         cloud.ease({
             opacity: 0,
-            scale_x: 1.40,
-            scale_y: 1.40,
-            x: originX + ((Math.random() * 6) - 3),
-            y: originY - 14,
-            duration: 190,
+            scale_x: 1.35,
+            scale_y: 1.35,
+            y: originY - 10,
+            duration: 180,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
                 if (this._activeCloud === cloud) {
@@ -416,42 +408,5 @@ export default class BoingIndicatorImpl {
                 }
             },
         });
-    }
-
-    _spawnPoofBubbles(cx, cy) {
-        const offsets = [
-            { x: -11, y: -9,  size: 7 },
-            { x: 13,  y: -11, size: 8 },
-            { x: 2,   y: -17, size: 6 },
-        ];
-
-        for (const pt of offsets) {
-            const bubble = new St.Bin({
-                reactive: false,
-                can_focus: false,
-                style: `background-color: rgba(220, 235, 255, 0.45); ` +
-                       `border-radius: 999px; ` +
-                       `width: ${pt.size}px; height: ${pt.size}px; ` +
-                       `box-shadow: 0 0 6px rgba(180, 220, 255, 0.6);`,
-            });
-            bubble.set_pivot_point(0.5, 0.5);
-            bubble.set_position(cx + pt.x, cy + pt.y);
-            bubble.scale_x = 0.35;
-            bubble.scale_y = 0.35;
-            bubble.opacity = 210;
-
-            Main.uiGroup.add_child(bubble);
-
-            bubble.ease({
-                opacity: 0,
-                scale_x: 1.5,
-                scale_y: 1.5,
-                x: cx + pt.x * 1.6,
-                y: cy + pt.y * 1.6,
-                duration: 210,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => bubble.destroy(),
-            });
-        }
     }
 }
