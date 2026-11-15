@@ -1,16 +1,36 @@
-# Boing Cloud Input Indicator for GNOME Shell
+# Boing Cloud Input Indicator ☁️💥
 
-A delightful, cartoonish "boing bah!" bouncy cloud input source indicator next to your cursor for GNOME Shell (GNOME 45–51+).
+> A playful, cartoonish **"Boing — Bah!"** animated input source indicator for GNOME Shell (GNOME 45–51+).
 
-## Features
+Replaces the clunky default center modal switcher with a bouncy, borderless floating cloud right next to your cursor with zero-latency switching and smooth mouse tracking.
 
-- **"BOING!" Elastic Bouncy Entry**: Squash and stretch entrance physics that pops right beside your cursor when switching layouts (`EN` / `RU`).
-- **"BAH!" Poof Disappearance**: Comic-style puff expansion and micro bubble dissipation when dissolving into thin air.
-- **Zero-Latency Instant Switching**: Completely replaces the obstructive modal center switcher with instantaneous layout cycling via `Alt + Space`.
-- **Rapid-Switch Squash Pulse**: Seamlessly handles fast typing and rapid consecutive switching with snappy in-place bounce pulses.
-- **Hot-Reload Architecture**: Dynamic loader allows real-time updates without restarting the shell.
+---
 
-## Installation
+## ✨ Features
+
+- **"BOING!" Elastic Bouncy Entry**: Pops up right at your cursor with cartoon *squash & stretch* physics (`RU` / `EN`).
+- **"BAH!" Poof Disappearance**: Rapid puff burst expansion and dissolving micro-bubbles upon release.
+- **Buttery Cursor Tracking**: Follows your cursor smoothly at 60 FPS with subtle directional tilt and momentum.
+- **Hold-to-Cycle (Зажатие / Зацикливание)**:
+  - Hold `Alt` and press `Space`: the cloud stays alive on screen as long as `Alt` is held, gliding with your cursor.
+  - Cycle through languages with snappy in-place bounces.
+  - Release `Alt` to instantly pop (**"BAH!"**) and disappear.
+- **Zero-Latency Switching**: Instant keyboard layout toggle via `Alt + Space` without annoying modal window lag.
+- **Smart Screen Clamping**: Automatically flips inside screen bounds near display edges.
+
+---
+
+## 🚀 One-Line Quick Install
+
+Simply run this command in your terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/besiple/tahoe-input-indicator-gnome/main/install.sh | bash
+```
+
+---
+
+## 🛠️ Manual Installation (Git)
 
 ```bash
 git clone https://github.com/besiple/tahoe-input-indicator-gnome.git
@@ -18,8 +38,34 @@ cd tahoe-input-indicator-gnome
 ./install.sh
 ```
 
-## Uninstallation
+> **Note**: On the very first install in GNOME Shell, perform a quick **Log Out → Log In** to allow GNOME Shell to register the extension.
+
+---
+
+## 🗑️ Uninstallation
+
+To completely remove the extension and restore standard GNOME switcher settings:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/besiple/tahoe-input-indicator-gnome/main/uninstall.sh | bash
+```
+
+Or from the cloned repository:
 
 ```bash
 ./uninstall.sh
 ```
+
+---
+
+## ⚙️ Compatibility
+
+- **GNOME Shell**: 45, 46, 47, 48, 49, 50, 51+
+- **Display Server**: Wayland & X11
+- **OS**: Arch Linux, Fedora, Ubuntu, Debian, openSUSE, and other modern distributions.
+
+---
+
+## 📄 License
+
+MIT © [besiple](https://github.com/besiple)
