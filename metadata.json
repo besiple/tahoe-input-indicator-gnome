@@ -1,6 +1,6 @@
 {
-  "name": "Steam Vapor Input Indicator",
-  "description": "Vapor trail & kill-effect style animated input source indicator next to the cursor with instant switching.",
+  "name": "Boing Cloud Input Indicator",
+  "description": "Bouncy comic cloud ('boing bah!') input source indicator next to the cursor with instant switching.",
   "uuid": "tahoe-input-indicator@besiple",
   "shell-version": [
     "45",
@@ -12,5 +12,5 @@
     "51"
   ],
   "url": "https://github.com/besiple/tahoe-input-indicator-gnome",
-  "version": 2
+  "version": 3
 }

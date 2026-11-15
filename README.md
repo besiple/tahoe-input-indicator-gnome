@@ -1,13 +1,14 @@
-# Steam Vapor Input Indicator for GNOME Shell
+# Boing Cloud Input Indicator for GNOME Shell
 
-A lightweight, video-game style input source indicator for GNOME Shell (GNOME 45–51+).
+A delightful, cartoonish "boing bah!" bouncy cloud input source indicator next to your cursor for GNOME Shell (GNOME 45–51+).
 
 ## Features
 
-- **Steam / Bullet Vapor Kill-Effect**: When switching input layouts (e.g. `en` / `ru`), an ethereal glowing vapor puff and text appear right next to your cursor, drift upwards, expand, and evaporate smoothly into thin air.
-- **Organic Float Physics**: Realistic thermal ascent with soft turbulence and expanding particle dissipation.
-- **Zero-Latency Instant Switching**: Replaces the obstructive center modal popup with seamless instant switching.
-- **Rapid-Switch Stacking**: Supports rapid consecutive switching with multiple organic vapor trails.
+- **"BOING!" Elastic Bouncy Entry**: Squash and stretch entrance physics that pops right beside your cursor when switching layouts (`EN` / `RU`).
+- **"BAH!" Poof Disappearance**: Comic-style puff expansion and micro bubble dissipation when dissolving into thin air.
+- **Zero-Latency Instant Switching**: Completely replaces the obstructive modal center switcher with instantaneous layout cycling via `Alt + Space`.
+- **Rapid-Switch Squash Pulse**: Seamlessly handles fast typing and rapid consecutive switching with snappy in-place bounce pulses.
+- **Hot-Reload Architecture**: Dynamic loader allows real-time updates without restarting the shell.
 
 ## Installation
 

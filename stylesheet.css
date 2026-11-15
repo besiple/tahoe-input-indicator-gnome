@@ -1,15 +1,17 @@
-/* macOS Tahoe Borderless Micro-Capsule Input Indicator */
+/* Boing Cloud Animated Input Indicator */
 
-.tahoe-micro-pill {
-    background-color: rgba(16, 16, 20, 0.82);
-    border-radius: 6px;
-    padding: 2px 7px;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.40);
+.boing-cloud {
+    background-color: rgba(22, 25, 34, 0.88);
+    border-radius: 12px;
+    padding: 3px 10px;
+    min-width: 32px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 12px rgba(180, 215, 255, 0.30);
 }
 
-.tahoe-micro-label {
+.boing-label {
     font-size: 9.5pt;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.95);
-    letter-spacing: 0.6px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 0.8px;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.40);
 }
