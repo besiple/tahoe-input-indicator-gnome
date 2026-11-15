@@ -10,7 +10,7 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-export default class VaporInputIndicatorExtension extends Extension {
+export default class TahoeInputIndicatorExtension extends Extension {
     enable() {
         this._isManager = Keyboard.getInputSourceManager();
         this._signals = [];
@@ -20,14 +20,14 @@ export default class VaporInputIndicatorExtension extends Extension {
         this._setupKeybindings();
         this._connectSignals();
 
-        console.log('[Steam Vapor Input Indicator] Extension enabled');
+        console.log('[macOS Tahoe Input Indicator] Extension enabled');
     }
 
     disable() {
         this._disconnectSignals();
         this._restoreKeybindings();
 
-        console.log('[Steam Vapor Input Indicator] Extension disabled');
+        console.log('[macOS Tahoe Input Indicator] Extension disabled');
     }
 
     _setupKeybindings() {
@@ -109,7 +109,7 @@ export default class VaporInputIndicatorExtension extends Extension {
     _connectSignals() {
         if (this._isManager) {
             const id = this._isManager.connect('current-source-changed', () => {
-                this._triggerSteam();
+                this._triggerIndicator();
             });
             this._signals.push({ obj: this._isManager, id });
         }
@@ -117,7 +117,7 @@ export default class VaporInputIndicatorExtension extends Extension {
         try {
             const modId = global.display.connect('modifiers-accelerator-activated', () => {
                 GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                    this._triggerSteam();
+                    this._triggerIndicator();
                     return GLib.SOURCE_REMOVE;
                 });
             });
@@ -136,7 +136,7 @@ export default class VaporInputIndicatorExtension extends Extension {
         this._signals = [];
     }
 
-    _triggerSteam() {
+    _triggerIndicator() {
         const now = GLib.get_monotonic_time();
         // 40ms debounce
         if (now - this._lastSpawnTime < 40000) return;
@@ -146,113 +146,71 @@ export default class VaporInputIndicatorExtension extends Extension {
         if (!current) return;
 
         const raw = current.shortName || current.id || '??';
-        const code = raw.toLowerCase().slice(0, 3); // 'en', 'ru'
+        const code = raw.toUpperCase().slice(0, 3); // 'RU', 'EN'
 
-        this._spawnSteam(code);
+        this._spawnCapsule(code);
     }
 
-    _spawnSteam(text) {
+    _spawnCapsule(text) {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
         const [px, py] = global.get_pointer();
         const startX = px + 12;
         const startY = py - 14;
 
-        // 1. Organic Steam Wisps (струйки и завитки пара)
-        const wispConfigs = [
-            { offsetX: -2, offsetY: 2,  w: 6, h: 14, driftX: -6, driftY: -32, dur: 480, delay: 0 },
-            { offsetX: 7,  offsetY: -3, w: 8, h: 18, driftX: 3,  driftY: -40, dur: 530, delay: 25 },
-            { offsetX: 15, offsetY: 3,  w: 5, h: 12, driftX: 7,  driftY: -28, dur: 460, delay: 45 },
-        ];
+        // Clean, compact macOS Tahoe / Dynamic capsule
+        const pill = new St.Bin({
+            style_class: 'tahoe-vapor-pill',
+            reactive: false,
+            can_focus: false,
+            style: 'background-color: rgba(18, 18, 22, 0.88); ' +
+                   'border: 1px solid rgba(255, 255, 255, 0.22); ' +
+                   'border-radius: 8px; ' +
+                   'padding: 3px 8px; ' +
+                   'box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);',
+        });
 
-        for (const cfg of wispConfigs) {
-            const wisp = new St.Bin({
-                style_class: 'vapor-wisp',
-                reactive: false,
-                can_focus: false,
-                style: `background-color: rgba(225, 240, 255, 0.25); ` +
-                       `border-radius: 4px 6px 3px 5px; ` +
-                       `width: ${cfg.w}px; height: ${cfg.h}px; ` +
-                       `box-shadow: 0 -2px 10px rgba(180, 220, 255, 0.55);`,
-            });
-            wisp.set_pivot_point(0.5, 1.0);
-            wisp.set_position(startX + cfg.offsetX, startY + cfg.offsetY);
-            wisp.scale_x = 0.5;
-            wisp.scale_y = 0.5;
-            wisp.opacity = 0;
-
-            Main.uiGroup.add_child(wisp);
-
-            const startRise = () => {
-                wisp.ease({
-                    opacity: 200,
-                    scale_x: 1.0,
-                    scale_y: 1.0,
-                    duration: 65,
-                    mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                    onComplete: () => {
-                        wisp.ease({
-                            opacity: 0,
-                            scale_x: 1.6,
-                            scale_y: 2.3, // elongates vertically like real thermal steam
-                            x: startX + cfg.offsetX + cfg.driftX + (Math.random() * 4 - 2),
-                            y: startY + cfg.offsetY + cfg.driftY,
-                            duration: cfg.dur,
-                            mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-                            onComplete: () => wisp.destroy(),
-                        });
-                    },
-                });
-            };
-
-            if (cfg.delay > 0) {
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, cfg.delay, () => {
-                    startRise();
-                    return GLib.SOURCE_REMOVE;
-                });
-            } else {
-                startRise();
-            }
-        }
-
-        // 2. Compact Glowing Steam Text (en / ru)
         const label = new St.Label({
-            style_class: 'vapor-text',
+            style_class: 'tahoe-vapor-label',
             text: text,
             reactive: false,
             can_focus: false,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.CENTER,
             style: 'font-weight: 800; ' +
-                   'font-size: 11.5pt; ' +
+                   'font-size: 10.5pt; ' +
                    'color: #ffffff; ' +
-                   'text-shadow: 0 0 6px rgba(255, 255, 255, 0.95), ' +
-                   '0 -2px 12px rgba(170, 215, 255, 0.8), ' +
-                   '0 -4px 18px rgba(130, 185, 255, 0.5);',
+                   'letter-spacing: 0.5px;',
         });
-        label.set_pivot_point(0.5, 0.5);
-        label.set_position(startX, startY);
-        label.scale_x = 0.7;
-        label.scale_y = 0.7;
-        label.opacity = 0;
 
-        Main.uiGroup.add_child(label);
+        pill.set_child(label);
+        pill.set_pivot_point(0.5, 0.5);
+        pill.set_position(startX, startY);
+        pill.scale_x = 0.75;
+        pill.scale_y = 0.75;
+        pill.opacity = 0;
 
-        label.ease({
+        Main.uiGroup.add_child(pill);
+
+        // Phase 1: Crisp pop in (65ms)
+        pill.ease({
             opacity: 255,
-            scale_x: 1.05,
-            scale_y: 1.05,
-            duration: 60,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            duration: 65,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
-                const driftX = (Math.random() * 6) - 3;
-                label.ease({
+                // Phase 2: Smooth upward float & clean evaporate (480ms)
+                const driftX = (Math.random() * 4) - 2;
+                pill.ease({
                     opacity: 0,
-                    scale_x: 1.25,
-                    scale_y: 1.25,
+                    scale_x: 1.15,
+                    scale_y: 1.15,
                     x: startX + driftX,
                     y: startY - 26,
                     duration: 480,
                     mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-                    onComplete: () => label.destroy(),
+                    onComplete: () => pill.destroy(),
                 });
             },
         });
