@@ -46,7 +46,7 @@ export default class TahoeInputIndicatorExtension extends Extension {
 
         const box = new St.BoxLayout({
             style_class: 'tahoe-indicator-content',
-            spacing: 8,
+            vertical: false,
             style: 'spacing: 8px;',
         });
 
@@ -291,7 +291,8 @@ export default class TahoeInputIndicatorExtension extends Extension {
 
         if (this._container.opacity > 100) {
             // Already visible: perform a sleek quick micro-pulse
-            this._container.set_scale(1.08, 1.08);
+            this._container.scale_x = 1.08;
+            this._container.scale_y = 1.08;
             this._container.ease({
                 scale_x: 1.0,
                 scale_y: 1.0,
@@ -301,7 +302,8 @@ export default class TahoeInputIndicatorExtension extends Extension {
         } else {
             // Fresh appearance: pop in with ease-out
             this._container.opacity = 0;
-            this._container.set_scale(0.82, 0.82);
+            this._container.scale_x = 0.82;
+            this._container.scale_y = 0.82;
             this._container.ease({
                 opacity: 255,
                 scale_x: 1.0,
