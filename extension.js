@@ -10,98 +10,31 @@ import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-export default class TahoeInputIndicatorExtension extends Extension {
+export default class VaporInputIndicatorExtension extends Extension {
     enable() {
         this._isManager = Keyboard.getInputSourceManager();
         this._signals = [];
-        this._hideTimeoutId = null;
+        this._lastSpawnTime = 0;
         this._origPopupShow = null;
 
-        this._buildIndicator();
         this._setupKeybindings();
-        this._hookInputSourceChanges();
+        this._connectSignals();
 
-        console.log('[macOS Tahoe Input Indicator] Enabled');
+        console.log('[Steam Vapor Input Indicator] Extension enabled');
     }
 
     disable() {
+        this._disconnectSignals();
         this._restoreKeybindings();
-        this._unhookInputSourceChanges();
-        this._destroyIndicator();
 
-        console.log('[macOS Tahoe Input Indicator] Disabled');
-    }
-
-    _buildIndicator() {
-        this._container = new St.Bin({
-            style_class: 'tahoe-indicator-container',
-            reactive: false,
-            can_focus: false,
-            style: 'background-color: rgba(22, 22, 26, 0.88); ' +
-                   'border: 1px solid rgba(255, 255, 255, 0.20); ' +
-                   'border-radius: 14px; ' +
-                   'padding: 6px 14px; ' +
-                   'box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);',
-        });
-
-        const box = new St.BoxLayout({
-            style_class: 'tahoe-indicator-content',
-            vertical: false,
-            style: 'spacing: 8px;',
-        });
-
-        this._codeLabel = new St.Label({
-            style_class: 'tahoe-indicator-code',
-            text: 'EN',
-            y_align: Clutter.ActorAlign.CENTER,
-            style: 'font-weight: 800; font-size: 13pt; color: #ffffff;',
-        });
-
-        this._divider = new St.Bin({
-            style_class: 'tahoe-indicator-divider',
-            style: 'background-color: rgba(255, 255, 255, 0.25); width: 1px; height: 16px; margin: 0 4px;',
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-
-        this._nameLabel = new St.Label({
-            style_class: 'tahoe-indicator-name',
-            text: 'English',
-            y_align: Clutter.ActorAlign.CENTER,
-            style: 'font-weight: 500; font-size: 10.5pt; color: rgba(255, 255, 255, 0.75);',
-        });
-
-        box.add_child(this._codeLabel);
-        box.add_child(this._divider);
-        box.add_child(this._nameLabel);
-
-        this._container.set_child(box);
-        this._container.set_pivot_point(0.5, 0.5);
-        this._container.opacity = 0;
-        this._container.hide();
-
-        Main.uiGroup.add_child(this._container);
-    }
-
-    _destroyIndicator() {
-        if (this._hideTimeoutId) {
-            GLib.source_remove(this._hideTimeoutId);
-            this._hideTimeoutId = null;
-        }
-
-        if (this._container) {
-            this._container.destroy();
-            this._container = null;
-        }
+        console.log('[Steam Vapor Input Indicator] Extension disabled');
     }
 
     _setupKeybindings() {
-        // Prevent default center modal switcher popup by replacing keybinding handlers
         try {
             Main.wm.removeKeybinding('switch-input-source');
             Main.wm.removeKeybinding('switch-input-source-backward');
-        } catch (e) {
-            console.log('[macOS Tahoe Input Indicator] removeKeybinding warning:', e);
-        }
+        } catch (e) {}
 
         const wmSettings = new Gio.Settings({ schema_id: 'org.gnome.desktop.wm.keybindings' });
 
@@ -110,9 +43,7 @@ export default class TahoeInputIndicatorExtension extends Extension {
             wmSettings,
             Meta.KeyBindingFlags.NONE,
             Shell.ActionMode.ALL,
-            (display, window, event, binding) => {
-                this._cycleInputSource(false);
-            }
+            () => this._cycleInputSource(false)
         );
 
         Main.wm.addKeybinding(
@@ -120,12 +51,10 @@ export default class TahoeInputIndicatorExtension extends Extension {
             wmSettings,
             Meta.KeyBindingFlags.IS_REVERSED,
             Shell.ActionMode.ALL,
-            (display, window, event, binding) => {
-                this._cycleInputSource(true);
-            }
+            () => this._cycleInputSource(true)
         );
 
-        // Safeguard: suppress InputSourcePopup show method if something else calls it
+        // Suppress any default center switcher popup
         if (Keyboard.InputSourcePopup && Keyboard.InputSourcePopup.prototype) {
             this._origPopupShow = Keyboard.InputSourcePopup.prototype.show;
             Keyboard.InputSourcePopup.prototype.show = function () {
@@ -156,9 +85,7 @@ export default class TahoeInputIndicatorExtension extends Extension {
                     this._isManager._switchInputSource.bind(this._isManager)
                 );
             }
-        } catch (e) {
-            console.log('[macOS Tahoe Input Indicator] restoreKeybindings warning:', e);
-        }
+        } catch (e) {}
 
         if (this._origPopupShow && Keyboard.InputSourcePopup && Keyboard.InputSourcePopup.prototype) {
             Keyboard.InputSourcePopup.prototype.show = this._origPopupShow;
@@ -173,31 +100,32 @@ export default class TahoeInputIndicatorExtension extends Extension {
         const mru = this._isManager._mruSources;
         if (!mru || mru.length < 2) return;
 
-        let targetSource = null;
-        if (isBackward) {
-            targetSource = mru[mru.length - 1];
-        } else {
-            targetSource = mru[1];
-        }
-
-        if (targetSource) {
-            targetSource.activate(true);
+        const target = isBackward ? mru[mru.length - 1] : mru[1];
+        if (target) {
+            target.activate(true);
         }
     }
 
-    _hookInputSourceChanges() {
-        if (!this._isManager) return;
+    _connectSignals() {
+        if (this._isManager) {
+            const id = this._isManager.connect('current-source-changed', () => {
+                this._triggerSteam();
+            });
+            this._signals.push({ obj: this._isManager, id });
+        }
 
-        const id = this._isManager.connect('current-source-changed', () => {
-            const current = this._isManager.currentSource;
-            if (current) {
-                this._showIndicator(current);
-            }
-        });
-        this._signals.push({ obj: this._isManager, id });
+        try {
+            const modId = global.display.connect('modifiers-accelerator-activated', () => {
+                GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                    this._triggerSteam();
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+            this._signals.push({ obj: global.display, id: modId });
+        } catch (e) {}
     }
 
-    _unhookInputSourceChanges() {
+    _disconnectSignals() {
         for (const sig of this._signals) {
             try {
                 if (sig.obj && sig.id) {
@@ -208,125 +136,110 @@ export default class TahoeInputIndicatorExtension extends Extension {
         this._signals = [];
     }
 
-    _showIndicator(source) {
-        if (!this._container) return;
+    _triggerSteam() {
+        const now = GLib.get_monotonic_time();
+        // 50ms debounce
+        if (now - this._lastSpawnTime < 50000) return;
+        this._lastSpawnTime = now;
+
+        const current = this._isManager ? this._isManager.currentSource : null;
+        if (!current) return;
+
+        const raw = current.shortName || current.id || '??';
+        const code = raw.toLowerCase().slice(0, 3); // 'en', 'ru'
+
+        this._spawnSteam(code);
+    }
+
+    _spawnSteam(text) {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
-        // 1. Text and labels
-        const rawCode = source.shortName || source.id || '??';
-        const code = rawCode.toUpperCase().slice(0, 3);
+        const [px, py] = global.get_pointer();
+        const startX = px + 14;
+        const startY = py - 18;
 
-        let name = source.displayName || code;
-        if (code === 'RU') {
-            name = 'Русский';
-        } else if (code === 'EN' || code === 'US') {
-            name = 'English';
-        }
+        // 1. Soft steam cloud puff behind text
+        const puff = new St.Bin({
+            style_class: 'vapor-puff',
+            reactive: false,
+            can_focus: false,
+            style: 'background-color: rgba(220, 240, 255, 0.22); ' +
+                   'border-radius: 999px; ' +
+                   'width: 36px; height: 36px; ' +
+                   'box-shadow: 0 0 24px rgba(180, 220, 255, 0.65);',
+        });
+        puff.set_pivot_point(0.5, 0.5);
+        puff.set_position(startX - 6, startY - 4);
+        puff.scale_x = 0.4;
+        puff.scale_y = 0.4;
+        puff.opacity = 0;
 
-        this._codeLabel.text = code;
-        this._nameLabel.text = name;
+        Main.uiGroup.add_child(puff);
 
-        // Force allocation to measure geometry
-        this._container.ensure_style();
+        // 2. Kill-effect / Steam text actor
+        const label = new St.Label({
+            style_class: 'vapor-text',
+            text: text,
+            reactive: false,
+            can_focus: false,
+            style: 'font-weight: 900; ' +
+                   'font-size: 15pt; ' +
+                   'color: #ffffff; ' +
+                   'text-shadow: 0 0 10px rgba(255, 255, 255, 0.95), ' +
+                   '0 0 20px rgba(180, 220, 255, 0.85), ' +
+                   '0 -4px 14px rgba(140, 190, 255, 0.6);',
+        });
+        label.set_pivot_point(0.5, 0.5);
+        label.set_position(startX, startY);
+        label.scale_x = 0.55;
+        label.scale_y = 0.55;
+        label.opacity = 0;
 
-        // 2. Compute Position: Caret priority with Cursor fallback
-        let targetX = 0;
-        let targetY = 0;
-        let placedAtCaret = false;
+        Main.uiGroup.add_child(label);
 
-        const cursorRect = Main.inputMethod?._cursorRect;
-        const focusWin = global.display.focus_window;
+        // Animation Phase 1: Snap into existence (60ms)
+        puff.ease({
+            opacity: 180,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            duration: 60,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => {
+                // Phase 2: Steam expands, rises upward and dissolves
+                const driftX = (Math.random() * 12) - 6;
+                puff.ease({
+                    opacity: 0,
+                    scale_x: 2.8,
+                    scale_y: 2.8,
+                    x: startX - 6 + driftX,
+                    y: startY - 65,
+                    duration: 600,
+                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    onComplete: () => puff.destroy(),
+                });
+            },
+        });
 
-        if (focusWin && cursorRect && cursorRect.width >= 0 && cursorRect.height >= 0) {
-            const frame = focusWin.get_frame_rect();
-            // Validate that cursor rect is realistically inside the active window
-            if (cursorRect.x >= frame.x && cursorRect.x <= (frame.x + frame.width) &&
-                cursorRect.y >= frame.y && cursorRect.y <= (frame.y + frame.height)) {
-                targetX = Math.round(cursorRect.x + cursorRect.width + 4);
-                targetY = Math.round(cursorRect.y + cursorRect.height + 6);
-                placedAtCaret = true;
-            }
-        }
-
-        if (!placedAtCaret) {
-            const [px, py] = global.get_pointer();
-            targetX = px + 18;
-            targetY = py + 22;
-        }
-
-        // Clamp to screen monitor bounds
-        const monitor = Main.layoutManager.findMonitorForActor(this._container) ||
-                        Main.layoutManager.currentMonitor ||
-                        Main.layoutManager.primaryMonitor;
-        if (monitor) {
-            const pad = 12;
-            const w = this._container.width || 135;
-            const h = this._container.height || 36;
-
-            if (targetX + w > monitor.x + monitor.width - pad) {
-                targetX = monitor.x + monitor.width - w - pad;
-            }
-            if (targetY + h > monitor.y + monitor.height - pad) {
-                if (placedAtCaret && cursorRect) {
-                    targetY = Math.max(monitor.y + pad, cursorRect.y - h - 6);
-                } else {
-                    targetY = monitor.y + monitor.height - h - pad;
-                }
-            }
-            targetX = Math.max(monitor.x + pad, targetX);
-            targetY = Math.max(monitor.y + pad, targetY);
-        }
-
-        this._container.set_position(targetX, targetY);
-
-        // 3. Smooth macOS Tahoe Animation
-        this._container.remove_all_transitions();
-
-        if (this._hideTimeoutId) {
-            GLib.source_remove(this._hideTimeoutId);
-            this._hideTimeoutId = null;
-        }
-
-        this._container.show();
-
-        if (this._container.opacity > 100) {
-            // Already visible: perform a sleek quick micro-pulse
-            this._container.scale_x = 1.08;
-            this._container.scale_y = 1.08;
-            this._container.ease({
-                scale_x: 1.0,
-                scale_y: 1.0,
-                duration: 90,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-            });
-        } else {
-            // Fresh appearance: pop in with ease-out
-            this._container.opacity = 0;
-            this._container.scale_x = 0.82;
-            this._container.scale_y = 0.82;
-            this._container.ease({
-                opacity: 255,
-                scale_x: 1.0,
-                scale_y: 1.0,
-                duration: 130,
-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
-            });
-        }
-
-        // Auto-fadeout after 750ms
-        this._hideTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 750, () => {
-            this._hideTimeoutId = null;
-            this._container.ease({
-                opacity: 0,
-                scale_x: 0.90,
-                scale_y: 0.90,
-                duration: 220,
-                mode: Clutter.AnimationMode.EASE_IN_CUBIC,
-                onComplete: () => {
-                    this._container.hide();
-                },
-            });
-            return GLib.SOURCE_REMOVE;
+        label.ease({
+            opacity: 255,
+            scale_x: 1.05,
+            scale_y: 1.05,
+            duration: 60,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => {
+                // Phase 2: Ascend and evaporate into thin air like bullet smoke / steam
+                const driftX = (Math.random() * 10) - 5;
+                label.ease({
+                    opacity: 0,
+                    scale_x: 1.45,
+                    scale_y: 1.45,
+                    x: startX + driftX,
+                    y: startY - 50,
+                    duration: 620,
+                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+                    onComplete: () => label.destroy(),
+                });
+            },
         });
     }
 }
