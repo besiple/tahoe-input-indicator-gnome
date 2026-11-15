@@ -17,15 +17,23 @@ export default class BoingIndicatorImpl {
         this._signals = [];
         this._lastSpawnTime = 0;
         this._origPopupShow = null;
+
         this._activeCloud = null;
         this._activeLabel = null;
         this._holdTimeoutId = null;
+        this._followLoopId = null;
+
+        this._currentX = 0;
+        this._currentY = 0;
+        this._currentTilt = 0;
+        this._spawnTime = 0;
+        this._wasHeld = false;
     }
 
     enable() {
         this._setupKeybindings();
         this._connectSignals();
-        console.log('[Boing Cloud Indicator] Implementation active');
+        console.log('[Boing Cloud Indicator] Implementation active with cursor follow & hold physics');
     }
 
     disable() {
@@ -36,6 +44,7 @@ export default class BoingIndicatorImpl {
     }
 
     _cleanupCloud() {
+        this._stopFollowLoop();
         if (this._holdTimeoutId) {
             GLib.source_remove(this._holdTimeoutId);
             this._holdTimeoutId = null;
@@ -46,6 +55,7 @@ export default class BoingIndicatorImpl {
             this._activeCloud = null;
             this._activeLabel = null;
         }
+        this._wasHeld = false;
     }
 
     _setupKeybindings() {
@@ -172,23 +182,28 @@ export default class BoingIndicatorImpl {
     _showBoingCloud(text) {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
-        const [px, py] = global.get_pointer();
-        const startX = px + 14;
-        const startY = py - 14;
+        const [px, py, mods] = global.get_pointer();
+        const targetX = px + 16;
+        const targetY = py - 16;
+
+        const isModifierHeld = (mods & (
+            Clutter.ModifierType.MOD1_MASK |
+            Clutter.ModifierType.SUPER_MASK |
+            Clutter.ModifierType.CONTROL_MASK
+        )) !== 0;
 
         // Rapid switch: Boing bounce in place with new text
         if (this._activeCloud && this._activeLabel && this._activeCloud.get_parent() && this._activeCloud.opacity > 50) {
-            if (this._holdTimeoutId) {
-                GLib.source_remove(this._holdTimeoutId);
-                this._holdTimeoutId = null;
+            this._spawnTime = GLib.get_monotonic_time();
+            this._activeLabel.text = text;
+
+            if (isModifierHeld) {
+                this._wasHeld = true;
             }
 
-            this._activeLabel.text = text;
+            // Quick squash-and-stretch pulse without fighting position follow
             this._activeCloud.remove_all_transitions();
-            this._activeCloud.set_position(startX, startY);
             this._activeCloud.opacity = 255;
-
-            // In-place Boing squash & stretch
             this._activeCloud.scale_x = 1.25;
             this._activeCloud.scale_y = 0.78;
 
@@ -198,15 +213,14 @@ export default class BoingIndicatorImpl {
                 duration: 45,
                 mode: Clutter.AnimationMode.EASE_OUT_QUAD,
                 onComplete: () => {
-                    this._activeCloud.ease({
-                        scale_x: 1.0,
-                        scale_y: 1.0,
-                        duration: 40,
-                        mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                        onComplete: () => {
-                            this._scheduleBahPoof(this._activeCloud, startX, startY);
-                        },
-                    });
+                    if (this._activeCloud) {
+                        this._activeCloud.ease({
+                            scale_x: 1.0,
+                            scale_y: 1.0,
+                            duration: 40,
+                            mode: Clutter.AnimationMode.EASE_IN_QUAD,
+                        });
+                    }
                 },
             });
             return;
@@ -214,7 +228,13 @@ export default class BoingIndicatorImpl {
 
         this._cleanupCloud();
 
-        // Fluffy borderless cloud container (soft bubbly rounded pill)
+        this._currentX = targetX;
+        this._currentY = targetY;
+        this._currentTilt = 0;
+        this._spawnTime = GLib.get_monotonic_time();
+        this._wasHeld = isModifierHeld;
+
+        // Fluffy borderless cloud container
         const cloud = new St.Bin({
             style_class: 'boing-cloud',
             reactive: false,
@@ -237,7 +257,7 @@ export default class BoingIndicatorImpl {
                    'font-size: 9.5pt; ' +
                    'color: #ffffff; ' +
                    'letter-spacing: 0.8px; ' +
-                   'text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);',
+                   'text-shadow: 0 0 6px rgba(255, 255, 255, 0.40);',
         });
 
         if (label.clutter_text) {
@@ -247,7 +267,7 @@ export default class BoingIndicatorImpl {
 
         cloud.set_child(label);
         cloud.set_pivot_point(0.5, 0.5);
-        cloud.set_position(startX, startY);
+        cloud.set_position(this._currentX, this._currentY);
         cloud.scale_x = 0.25;
         cloud.scale_y = 0.25;
         cloud.opacity = 0;
@@ -257,8 +277,9 @@ export default class BoingIndicatorImpl {
         this._activeCloud = cloud;
         this._activeLabel = label;
 
+        this._startFollowLoop();
+
         // Stage 1: "BOING!" (Elastic Squash & Stretch entry)
-        // 1a: Explosive squash expansion
         cloud.ease({
             opacity: 255,
             scale_x: 1.28,
@@ -266,22 +287,19 @@ export default class BoingIndicatorImpl {
             duration: 65,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
-                // 1b: Rebound stretch
+                if (!this._activeCloud) return;
                 cloud.ease({
                     scale_x: 0.88,
                     scale_y: 1.16,
                     duration: 50,
                     mode: Clutter.AnimationMode.EASE_IN_OUT_QUAD,
                     onComplete: () => {
-                        // 1c: Settle to 1.0
+                        if (!this._activeCloud) return;
                         cloud.ease({
                             scale_x: 1.0,
                             scale_y: 1.0,
                             duration: 45,
                             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                            onComplete: () => {
-                                this._scheduleBahPoof(cloud, startX, startY);
-                            },
                         });
                     },
                 });
@@ -289,33 +307,114 @@ export default class BoingIndicatorImpl {
         });
     }
 
-    _scheduleBahPoof(cloud, originX, originY) {
-        // Hold for ~240ms, then "BAH!" poof dissolve
-        this._holdTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 240, () => {
-            this._holdTimeoutId = null;
-            if (!cloud || !cloud.get_parent()) return GLib.SOURCE_REMOVE;
+    _startFollowLoop() {
+        if (this._followLoopId) return;
 
-            // Spawn 3 tiny comic poof micro-bubbles
-            this._spawnPoofBubbles(originX, originY);
+        this._followLoopId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 16, () => {
+            if (!this._activeCloud || !this._activeCloud.get_parent()) {
+                this._followLoopId = null;
+                return GLib.SOURCE_REMOVE;
+            }
 
-            // "BAH!" burst: expands quickly and pops away
-            cloud.ease({
-                opacity: 0,
-                scale_x: 1.40,
-                scale_y: 1.40,
-                x: originX + ((Math.random() * 6) - 3),
-                y: originY - 14,
-                duration: 190,
-                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
-                onComplete: () => {
-                    if (this._activeCloud === cloud) {
-                        this._cleanupCloud();
-                    } else {
-                        cloud.destroy();
-                    }
-                },
-            });
-            return GLib.SOURCE_REMOVE;
+            const [px, py, mods] = global.get_pointer();
+
+            // Smooth pointer following target
+            let targetX = px + 16;
+            let targetY = py - 16;
+
+            const primaryMonitor = Main.layoutManager ? Main.layoutManager.primaryMonitor : null;
+            if (primaryMonitor) {
+                if (targetX + 50 > primaryMonitor.x + primaryMonitor.width) {
+                    targetX = px - 54;
+                }
+                if (targetY < primaryMonitor.y + 10) {
+                    targetY = py + 22;
+                }
+            }
+
+            // Buttery exponential smoothing (inertia / float)
+            const factor = 0.28;
+            this._currentX += (targetX - this._currentX) * factor;
+            this._currentY += (targetY - this._currentY) * factor;
+
+            // Subtle dynamic tilt based on horizontal velocity
+            const vx = targetX - this._currentX;
+            const targetTilt = Math.max(-14, Math.min(14, vx * 0.45));
+            this._currentTilt += (targetTilt - this._currentTilt) * 0.25;
+
+            try {
+                this._activeCloud.rotation_angle_z = this._currentTilt;
+            } catch (e) {}
+
+            this._activeCloud.set_position(
+                Math.round(this._currentX),
+                Math.round(this._currentY)
+            );
+
+            // Modifier hold tracking (Alt/Super/Ctrl)
+            const isModifierHeld = (mods & (
+                Clutter.ModifierType.MOD1_MASK |
+                Clutter.ModifierType.SUPER_MASK |
+                Clutter.ModifierType.CONTROL_MASK
+            )) !== 0;
+
+            const now = GLib.get_monotonic_time();
+            const elapsedMs = (now - this._spawnTime) / 1000;
+
+            if (isModifierHeld) {
+                this._wasHeld = true;
+                // Held down: cancel any auto-poof
+                if (this._holdTimeoutId) {
+                    GLib.source_remove(this._holdTimeoutId);
+                    this._holdTimeoutId = null;
+                }
+            } else if (this._wasHeld) {
+                // Key released after hold: trigger BAH poof!
+                this._wasHeld = false;
+                this._stopFollowLoop();
+                this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
+                return GLib.SOURCE_REMOVE;
+            } else if (elapsedMs > 280 && !this._holdTimeoutId) {
+                // Quick tap elapsed: trigger BAH poof!
+                this._stopFollowLoop();
+                this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
+                return GLib.SOURCE_REMOVE;
+            }
+
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _stopFollowLoop() {
+        if (this._followLoopId) {
+            GLib.source_remove(this._followLoopId);
+            this._followLoopId = null;
+        }
+    }
+
+    _triggerBahPoof(cloud, originX, originY) {
+        if (!cloud || !cloud.get_parent()) return;
+
+        // Spawn 3 tiny comic poof micro-bubbles
+        this._spawnPoofBubbles(originX, originY);
+
+        // "BAH!" burst: expands quickly and pops away
+        cloud.remove_all_transitions();
+        cloud.ease({
+            opacity: 0,
+            scale_x: 1.40,
+            scale_y: 1.40,
+            x: originX + ((Math.random() * 6) - 3),
+            y: originY - 14,
+            duration: 190,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            onComplete: () => {
+                if (this._activeCloud === cloud) {
+                    this._cleanupCloud();
+                } else {
+                    cloud.destroy();
+                }
+            },
         });
     }
 
