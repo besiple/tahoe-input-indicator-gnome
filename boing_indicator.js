@@ -10,6 +10,10 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
+const TAP_LINGER_MS = 700;       // Linger time on screen after quick Alt+Space tap
+const RELEASE_LINGER_MS = 450;   // Linger time after releasing held modifier
+const FADE_OUT_DURATION_MS = 320; // Smooth disappearing duration
+
 export default class BoingIndicatorImpl {
     constructor(extension) {
         this._extension = extension;
@@ -27,13 +31,14 @@ export default class BoingIndicatorImpl {
         this._currentY = 0;
         this._currentTilt = 0;
         this._spawnTime = 0;
+        this._releaseTime = 0;
         this._wasHeld = false;
     }
 
     enable() {
         this._setupKeybindings();
         this._connectSignals();
-        console.log('[Boing Cloud Indicator] Clean minimalist style active (no glow, no steam particles)');
+        console.log('[Boing Cloud Indicator] Clean minimalist style active');
     }
 
     disable() {
@@ -56,6 +61,7 @@ export default class BoingIndicatorImpl {
             this._activeLabel = null;
         }
         this._wasHeld = false;
+        this._releaseTime = 0;
     }
 
     _setupKeybindings() {
@@ -195,6 +201,7 @@ export default class BoingIndicatorImpl {
         // Rapid switch: Boing bounce in place with new text
         if (this._activeCloud && this._activeLabel && this._activeCloud.get_parent() && this._activeCloud.opacity > 50) {
             this._spawnTime = GLib.get_monotonic_time();
+            this._releaseTime = 0;
             this._activeLabel.text = text;
 
             if (isModifierHeld) {
@@ -223,6 +230,10 @@ export default class BoingIndicatorImpl {
                     }
                 },
             });
+
+            if (!this._followLoopId) {
+                this._startFollowLoop();
+            }
             return;
         }
 
@@ -232,6 +243,7 @@ export default class BoingIndicatorImpl {
         this._currentY = targetY;
         this._currentTilt = 0;
         this._spawnTime = GLib.get_monotonic_time();
+        this._releaseTime = 0;
         this._wasHeld = isModifierHeld;
 
         // Clean borderless dark cloud capsule (no glow aura)
@@ -362,16 +374,24 @@ export default class BoingIndicatorImpl {
 
             if (isModifierHeld) {
                 this._wasHeld = true;
+                this._releaseTime = 0;
                 if (this._holdTimeoutId) {
                     GLib.source_remove(this._holdTimeoutId);
                     this._holdTimeoutId = null;
                 }
             } else if (this._wasHeld) {
-                this._wasHeld = false;
-                this._stopFollowLoop();
-                this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
-                return GLib.SOURCE_REMOVE;
-            } else if (elapsedMs > 280 && !this._holdTimeoutId) {
+                if (!this._releaseTime) {
+                    this._releaseTime = now;
+                }
+                const releaseElapsedMs = (now - this._releaseTime) / 1000;
+                if (releaseElapsedMs > RELEASE_LINGER_MS) {
+                    this._wasHeld = false;
+                    this._releaseTime = 0;
+                    this._stopFollowLoop();
+                    this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
+                    return GLib.SOURCE_REMOVE;
+                }
+            } else if (elapsedMs > TAP_LINGER_MS && !this._holdTimeoutId) {
                 this._stopFollowLoop();
                 this._triggerBahPoof(this._activeCloud, this._currentX, this._currentY);
                 return GLib.SOURCE_REMOVE;
@@ -391,14 +411,14 @@ export default class BoingIndicatorImpl {
     _triggerBahPoof(cloud, originX, originY) {
         if (!cloud || !cloud.get_parent()) return;
 
-        // Clean pop & dissolve without steam particles
+        // Clean, gentle pop & dissolve
         cloud.remove_all_transitions();
         cloud.ease({
             opacity: 0,
-            scale_x: 1.35,
-            scale_y: 1.35,
-            y: originY - 10,
-            duration: 180,
+            scale_x: 1.18,
+            scale_y: 1.18,
+            y: originY - 6,
+            duration: FADE_OUT_DURATION_MS,
             mode: Clutter.AnimationMode.EASE_OUT_QUAD,
             onComplete: () => {
                 if (this._activeCloud === cloud) {
