@@ -10,8 +10,8 @@ import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-const TAP_LINGER_MS = 700;       // Linger time on screen after quick Alt+Space tap
-const RELEASE_LINGER_MS = 450;   // Linger time after releasing held modifier
+const TAP_LINGER_MS = 700;        // Linger time on screen after quick Alt+Space tap
+const RELEASE_LINGER_MS = 450;    // Linger time after releasing held modifier
 const FADE_OUT_DURATION_MS = 320; // Smooth disappearing duration
 
 export default class BoingIndicatorImpl {
@@ -33,6 +33,9 @@ export default class BoingIndicatorImpl {
         this._spawnTime = 0;
         this._releaseTime = 0;
         this._wasHeld = false;
+        this._side = 1; // 1 = right of cursor, -1 = left of cursor
+        this._prevPointerX = null;
+        this._prevPointerY = null;
     }
 
     enable() {
@@ -62,6 +65,8 @@ export default class BoingIndicatorImpl {
         }
         this._wasHeld = false;
         this._releaseTime = 0;
+        this._prevPointerX = null;
+        this._prevPointerY = null;
     }
 
     _setupKeybindings() {
@@ -189,7 +194,20 @@ export default class BoingIndicatorImpl {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
         const [px, py, mods] = global.get_pointer();
-        const targetX = px + 16;
+
+        const primaryMonitor = Main.layoutManager ? Main.layoutManager.primaryMonitor : null;
+        if (this._prevPointerX === null) {
+            if (primaryMonitor && px + 70 > primaryMonitor.x + primaryMonitor.width) {
+                this._side = -1;
+            } else {
+                this._side = 1;
+            }
+        }
+        this._prevPointerX = px;
+        this._prevPointerY = py;
+
+        const initialWidth = 46;
+        const targetX = this._side === 1 ? px + 18 : px - initialWidth - 16;
         const targetY = py - 16;
 
         const isModifierHeld = (mods & (
@@ -245,6 +263,8 @@ export default class BoingIndicatorImpl {
         this._spawnTime = GLib.get_monotonic_time();
         this._releaseTime = 0;
         this._wasHeld = isModifierHeld;
+        this._prevPointerX = px;
+        this._prevPointerY = py;
 
         // Clean borderless dark cloud capsule (no glow aura)
         const cloud = new St.Bin({
@@ -329,15 +349,37 @@ export default class BoingIndicatorImpl {
 
             const [px, py, mods] = global.get_pointer();
 
-            // Smooth pointer following target
-            let targetX = px + 16;
+            // Detect cursor movement direction:
+            // moving left -> bubble shifts to the left of the cursor
+            // moving right -> bubble shifts to the right of the cursor
+            if (this._prevPointerX !== null) {
+                const deltaX = px - this._prevPointerX;
+                if (deltaX < -2) {
+                    this._side = -1;
+                } else if (deltaX > 2) {
+                    this._side = 1;
+                }
+            }
+            this._prevPointerX = px;
+            this._prevPointerY = py;
+
+            const cloudWidth = this._activeCloud.width > 0 ? this._activeCloud.width : 46;
+            let targetX = this._side === 1 ? px + 18 : px - cloudWidth - 16;
             let targetY = py - 16;
 
             const primaryMonitor = Main.layoutManager ? Main.layoutManager.primaryMonitor : null;
             if (primaryMonitor) {
-                if (targetX + 50 > primaryMonitor.x + primaryMonitor.width) {
-                    targetX = px - 54;
+                // If moving right but bumping against right edge, push to left
+                if (this._side === 1 && targetX + cloudWidth > primaryMonitor.x + primaryMonitor.width - 6) {
+                    targetX = px - cloudWidth - 16;
+                } else if (this._side === -1 && targetX < primaryMonitor.x + 6) {
+                    // If moving left but bumping against left edge, push to right
+                    targetX = px + 18;
                 }
+
+                // Clamping to screen boundaries
+                targetX = Math.max(primaryMonitor.x + 6, Math.min(primaryMonitor.x + primaryMonitor.width - cloudWidth - 6, targetX));
+
                 if (targetY < primaryMonitor.y + 10) {
                     targetY = py + 22;
                 }
