@@ -2,15 +2,17 @@
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
+import * as IBusManager from 'resource:///org/gnome/shell/misc/ibusManager.js';
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
+import Mtk from 'gi://Mtk';
 import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 
-const TAP_LINGER_MS = 700;        // Linger time on screen after quick Alt+Space tap
+const TAP_LINGER_MS = 700;        // Linger time on screen after quick Super+Space tap
 const RELEASE_LINGER_MS = 450;    // Linger time after releasing held modifier
 const FADE_OUT_DURATION_MS = 320; // Smooth disappearing duration
 
@@ -21,6 +23,9 @@ export default class BoingIndicatorImpl {
         this._signals = [];
         this._lastSpawnTime = 0;
         this._origPopupShow = null;
+        this._origSetCursorLocation = null;
+        this._origFocusOut = null;
+        this._lastCaretRect = null;
 
         this._activeCloud = null;
         this._activeLabel = null;
@@ -33,22 +38,81 @@ export default class BoingIndicatorImpl {
         this._spawnTime = 0;
         this._releaseTime = 0;
         this._wasHeld = false;
-        this._side = 1; // 1 = right of cursor, -1 = left of cursor
-        this._prevPointerX = null;
-        this._prevPointerY = null;
+        this._attachedToCaret = false;
     }
 
     enable() {
         this._setupKeybindings();
         this._connectSignals();
-        console.log('[Boing Cloud Indicator] Clean minimalist style active');
+        this._hookInputMethod();
+        console.log('[Boing Cloud Indicator] Caret anchor style active');
     }
 
     disable() {
+        this._unhookInputMethod();
         this._disconnectSignals();
         this._restoreKeybindings();
         this._cleanupCloud();
         console.log('[Boing Cloud Indicator] Implementation disabled');
+    }
+
+    _hookInputMethod() {
+        if (!Main.inputMethod) return;
+
+        const self = this;
+        this._origSetCursorLocation = Main.inputMethod.vfunc_set_cursor_location;
+        Main.inputMethod.vfunc_set_cursor_location = function(rect) {
+            if (rect) {
+                try {
+                    const rx = rect.get_x();
+                    const ry = rect.get_y();
+                    const rw = rect.get_width();
+                    const rh = rect.get_height();
+                    const focusWindow = global.display.focus_window;
+
+                    if (focusWindow && rh > 2) {
+                        const mtkRect = new Mtk.Rectangle({
+                            x: Math.round(rx),
+                            y: Math.round(ry),
+                            width: Math.max(1, Math.round(rw)),
+                            height: Math.max(1, Math.round(rh)),
+                        });
+                        const stageRect = focusWindow.protocol_to_stage_rect(mtkRect);
+                        self._lastCaretRect = {
+                            x: stageRect.x,
+                            y: stageRect.y,
+                            width: Math.max(2, stageRect.width),
+                            height: Math.max(14, stageRect.height),
+                            window: focusWindow,
+                            time: GLib.get_monotonic_time(),
+                        };
+                    }
+                } catch (e) {}
+            }
+            if (self._origSetCursorLocation)
+                return self._origSetCursorLocation.call(this, rect);
+        };
+
+        this._origFocusOut = Main.inputMethod.vfunc_focus_out;
+        Main.inputMethod.vfunc_focus_out = function() {
+            self._lastCaretRect = null;
+            if (self._origFocusOut)
+                return self._origFocusOut.call(this);
+        };
+    }
+
+    _unhookInputMethod() {
+        if (Main.inputMethod) {
+            if (this._origSetCursorLocation) {
+                Main.inputMethod.vfunc_set_cursor_location = this._origSetCursorLocation;
+                this._origSetCursorLocation = null;
+            }
+            if (this._origFocusOut) {
+                Main.inputMethod.vfunc_focus_out = this._origFocusOut;
+                this._origFocusOut = null;
+            }
+        }
+        this._lastCaretRect = null;
     }
 
     _cleanupCloud() {
@@ -65,8 +129,7 @@ export default class BoingIndicatorImpl {
         }
         this._wasHeld = false;
         this._releaseTime = 0;
-        this._prevPointerX = null;
-        this._prevPointerY = null;
+        this._attachedToCaret = false;
     }
 
     _setupKeybindings() {
@@ -190,25 +253,118 @@ export default class BoingIndicatorImpl {
         this._showBoingCloud(code);
     }
 
+    _getCaretPosition() {
+        // 1. Clutter / GNOME Shell UI focused element (e.g. search entries, dialogs)
+        try {
+            const keyFocus = global.stage.key_focus;
+            if (keyFocus && keyFocus instanceof Clutter.Text) {
+                const [ok, cursorRect] = keyFocus.get_cursor_rect();
+                const [stageX, stageY] = keyFocus.get_transformed_position();
+                const rx = cursorRect ? cursorRect.x : 0;
+                const ry = cursorRect ? cursorRect.y : 0;
+                const rw = cursorRect ? cursorRect.width : 2;
+                const rh = cursorRect ? cursorRect.height : 20;
+                return {
+                    x: Math.round(stageX + rx),
+                    y: Math.round(stageY + ry),
+                    width: Math.max(2, Math.round(rw)),
+                    height: Math.max(14, Math.round(rh)),
+                };
+            }
+        } catch (e) {}
+
+        // 2. Candidate popup dummyCursor from IBus
+        try {
+            const ibusMgr = IBusManager.getIBusManager?.();
+            const popup = ibusMgr?._candidatePopup;
+            if (popup && popup._dummyCursor && popup._dummyCursor.width > 0 && popup._dummyCursor.height > 2) {
+                const [cx, cy] = popup._dummyCursor.get_position();
+                const cw = popup._dummyCursor.width;
+                const ch = popup._dummyCursor.height;
+                if (ch > 6 && ch < 300) {
+                    return { x: Math.round(cx), y: Math.round(cy), width: Math.max(2, Math.round(cw)), height: Math.round(ch) };
+                }
+            }
+        } catch (e) {}
+
+        // 3. Tracked caret rect from inputMethod hook
+        if (this._lastCaretRect && this._lastCaretRect.height > 2) {
+            const focusWindow = global.display.focus_window;
+            if (!this._lastCaretRect.window || this._lastCaretRect.window === focusWindow) {
+                return this._lastCaretRect;
+            }
+        }
+
+        // 4. Main.inputMethod._cursorRect directly
+        try {
+            const cr = Main.inputMethod?._cursorRect;
+            const focusWindow = global.display.focus_window;
+            if (cr && cr.height > 2 && focusWindow) {
+                const mtkRect = new Mtk.Rectangle({
+                    x: Math.round(cr.x),
+                    y: Math.round(cr.y),
+                    width: Math.max(1, Math.round(cr.width)),
+                    height: Math.max(1, Math.round(cr.height)),
+                });
+                const stageRect = focusWindow.protocol_to_stage_rect(mtkRect);
+                if (stageRect && stageRect.height > 2) {
+                    return {
+                        x: stageRect.x,
+                        y: stageRect.y,
+                        width: Math.max(2, stageRect.width),
+                        height: Math.max(14, stageRect.height),
+                    };
+                }
+            }
+        } catch (e) {}
+
+        return null;
+    }
+
+    _calculateTargetPosition(caret) {
+        const cloudWidth = this._activeCloud && this._activeCloud.width > 0 ? this._activeCloud.width : 42;
+        const cloudHeight = this._activeCloud && this._activeCloud.height > 0 ? this._activeCloud.height : 24;
+        const primaryMonitor = Main.layoutManager ? Main.layoutManager.primaryMonitor : null;
+
+        if (caret) {
+            // Anchor to text caret: centered horizontally over the '|' cursor, floating right above it
+            let targetX = Math.round(caret.x + (caret.width / 2) - (cloudWidth / 2));
+            let targetY = Math.round(caret.y - cloudHeight - 5);
+
+            if (primaryMonitor) {
+                // If too close to top bar or screen top edge, flip to appear below the caret line
+                if (targetY < primaryMonitor.y + 10) {
+                    targetY = Math.round(caret.y + caret.height + 5);
+                }
+                // Keep horizontally on screen
+                targetX = Math.max(primaryMonitor.x + 8, Math.min(primaryMonitor.x + primaryMonitor.width - cloudWidth - 8, targetX));
+            }
+            return { x: targetX, y: targetY, isCaret: true };
+        }
+
+        // Fallback when no text field / caret is active: near pointer
+        const [px, py] = global.get_pointer();
+        let targetX = px + 18;
+        let targetY = py - 16;
+        if (primaryMonitor) {
+            if (targetX + cloudWidth > primaryMonitor.x + primaryMonitor.width - 6) {
+                targetX = px - cloudWidth - 16;
+            }
+            targetX = Math.max(primaryMonitor.x + 6, Math.min(primaryMonitor.x + primaryMonitor.width - cloudWidth - 6, targetX));
+            if (targetY < primaryMonitor.y + 10) {
+                targetY = py + 22;
+            }
+        }
+        return { x: targetX, y: targetY, isCaret: false };
+    }
+
     _showBoingCloud(text) {
         if (Main.sessionMode && Main.sessionMode.isLocked) return;
 
-        const [px, py, mods] = global.get_pointer();
-
-        const primaryMonitor = Main.layoutManager ? Main.layoutManager.primaryMonitor : null;
-        if (this._prevPointerX === null) {
-            if (primaryMonitor && px + 70 > primaryMonitor.x + primaryMonitor.width) {
-                this._side = -1;
-            } else {
-                this._side = 1;
-            }
-        }
-        this._prevPointerX = px;
-        this._prevPointerY = py;
-
-        const initialWidth = 46;
-        const targetX = this._side === 1 ? px + 18 : px - initialWidth - 16;
-        const targetY = py - 16;
+        const [, , mods] = global.get_pointer();
+        const caret = this._getCaretPosition();
+        const pos = this._calculateTargetPosition(caret);
+        this._attachedToCaret = pos.isCaret;
 
         const isModifierHeld = (mods & (
             Clutter.ModifierType.MOD1_MASK |
@@ -224,6 +380,13 @@ export default class BoingIndicatorImpl {
 
             if (isModifierHeld) {
                 this._wasHeld = true;
+            }
+
+            // Snap to latest caret position if present
+            if (pos.isCaret) {
+                this._currentX = pos.x;
+                this._currentY = pos.y;
+                this._activeCloud.set_position(pos.x, pos.y);
             }
 
             // Clean in-place squash & stretch pulse
@@ -257,21 +420,20 @@ export default class BoingIndicatorImpl {
 
         this._cleanupCloud();
 
-        this._currentX = targetX;
-        this._currentY = targetY;
+        this._currentX = pos.x;
+        this._currentY = pos.y;
         this._currentTilt = 0;
         this._spawnTime = GLib.get_monotonic_time();
         this._releaseTime = 0;
         this._wasHeld = isModifierHeld;
-        this._prevPointerX = px;
-        this._prevPointerY = py;
+        this._attachedToCaret = pos.isCaret;
 
-        // Clean borderless dark cloud capsule (no glow aura)
+        // Clean borderless dark cloud capsule (macOS Tahoe style)
         const cloud = new St.Bin({
             style_class: 'boing-cloud',
             reactive: false,
             can_focus: false,
-            style: 'background-color: rgba(22, 25, 34, 0.90); ' +
+            style: 'background-color: rgba(22, 25, 34, 0.92); ' +
                    'border-radius: 12px; ' +
                    'padding: 3px 10px; ' +
                    'min-width: 32px; ' +
@@ -347,64 +509,45 @@ export default class BoingIndicatorImpl {
                 return GLib.SOURCE_REMOVE;
             }
 
-            const [px, py, mods] = global.get_pointer();
+            const [, , mods] = global.get_pointer();
 
-            // Detect cursor movement direction:
-            // moving left -> bubble shifts to the left of the cursor
-            // moving right -> bubble shifts to the right of the cursor
-            if (this._prevPointerX !== null) {
-                const deltaX = px - this._prevPointerX;
-                if (deltaX < -2) {
-                    this._side = -1;
-                } else if (deltaX > 2) {
-                    this._side = 1;
+            // If attached to caret: stay anchored at caret '|'
+            // If caret moves (e.g. typing while holding Super), update smoothly to new caret location
+            if (this._attachedToCaret) {
+                const caret = this._getCaretPosition();
+                if (caret) {
+                    const pos = this._calculateTargetPosition(caret);
+                    const factor = 0.35;
+                    this._currentX += (pos.x - this._currentX) * factor;
+                    this._currentY += (pos.y - this._currentY) * factor;
+                    this._activeCloud.set_position(
+                        Math.round(this._currentX),
+                        Math.round(this._currentY)
+                    );
                 }
+            } else {
+                // Fallback mouse tracking only when NO text field is active
+                const [px, py] = global.get_pointer();
+                const pos = this._calculateTargetPosition(null);
+                const factor = 0.28;
+                this._currentX += (pos.x - this._currentX) * factor;
+                this._currentY += (pos.y - this._currentY) * factor;
+
+                const vx = pos.x - this._currentX;
+                const targetTilt = Math.max(-14, Math.min(14, vx * 0.45));
+                this._currentTilt += (targetTilt - this._currentTilt) * 0.25;
+
+                try {
+                    this._activeCloud.rotation_angle_z = this._currentTilt;
+                } catch (e) {}
+
+                this._activeCloud.set_position(
+                    Math.round(this._currentX),
+                    Math.round(this._currentY)
+                );
             }
-            this._prevPointerX = px;
-            this._prevPointerY = py;
 
-            const cloudWidth = this._activeCloud.width > 0 ? this._activeCloud.width : 46;
-            let targetX = this._side === 1 ? px + 18 : px - cloudWidth - 16;
-            let targetY = py - 16;
-
-            const primaryMonitor = Main.layoutManager ? Main.layoutManager.primaryMonitor : null;
-            if (primaryMonitor) {
-                // If moving right but bumping against right edge, push to left
-                if (this._side === 1 && targetX + cloudWidth > primaryMonitor.x + primaryMonitor.width - 6) {
-                    targetX = px - cloudWidth - 16;
-                } else if (this._side === -1 && targetX < primaryMonitor.x + 6) {
-                    // If moving left but bumping against left edge, push to right
-                    targetX = px + 18;
-                }
-
-                // Clamping to screen boundaries
-                targetX = Math.max(primaryMonitor.x + 6, Math.min(primaryMonitor.x + primaryMonitor.width - cloudWidth - 6, targetX));
-
-                if (targetY < primaryMonitor.y + 10) {
-                    targetY = py + 22;
-                }
-            }
-
-            // Buttery exponential smoothing (inertia / float)
-            const factor = 0.28;
-            this._currentX += (targetX - this._currentX) * factor;
-            this._currentY += (targetY - this._currentY) * factor;
-
-            // Subtle dynamic tilt based on horizontal velocity
-            const vx = targetX - this._currentX;
-            const targetTilt = Math.max(-14, Math.min(14, vx * 0.45));
-            this._currentTilt += (targetTilt - this._currentTilt) * 0.25;
-
-            try {
-                this._activeCloud.rotation_angle_z = this._currentTilt;
-            } catch (e) {}
-
-            this._activeCloud.set_position(
-                Math.round(this._currentX),
-                Math.round(this._currentY)
-            );
-
-            // Modifier hold tracking (Alt/Super/Ctrl)
+            // Modifier hold tracking (Super/Alt/Ctrl)
             const isModifierHeld = (mods & (
                 Clutter.ModifierType.MOD1_MASK |
                 Clutter.ModifierType.SUPER_MASK |
