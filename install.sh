@@ -79,10 +79,10 @@ if uuid not in enabled:
 "
 
 # Configure Alt+Space layout switching and suppress modal center popup
-echo "⌨️ Configuring Alt+Space switching..."
-gsettings set org.gnome.desktop.input-sources xkb-options "['grp:alt_space_toggle']"
-gsettings set org.gnome.desktop.wm.keybindings switch-input-source "[]"
-gsettings set org.gnome.desktop.wm.keybindings switch-input-source-backward "[]"
+echo "⌨️ Configuring Super+Space switching..."
+gsettings set org.gnome.desktop.input-sources xkb-options "[]"
+gsettings set org.gnome.desktop.wm.keybindings switch-input-source "['<Super>space']"
+gsettings set org.gnome.desktop.wm.keybindings switch-input-source-backward "['<Shift><Super>space']"
 gsettings set org.gnome.desktop.wm.keybindings activate-window-menu "[]"
 
 # Enable extension via gnome-extensions & DBus
@@ -98,4 +98,4 @@ fi
 
 echo ""
 echo "✨ Boing Cloud Input Indicator successfully installed!"
-echo "👉 Press Alt + Space to test the bouncy cloud!"
+echo "👉 Press Super + Space to test the bouncy cloud!"

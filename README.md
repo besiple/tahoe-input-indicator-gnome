@@ -12,10 +12,10 @@ Replaces the clunky default center modal switcher with a bouncy, borderless floa
 - **"BAH!" Poof Disappearance**: Rapid puff burst expansion and dissolving micro-bubbles upon release.
 - **Buttery Cursor Tracking**: Follows your cursor smoothly at 60 FPS with subtle directional tilt and momentum.
 - **Hold-to-Cycle (Зажатие / Зацикливание)**:
-  - Hold `Alt` and press `Space`: the cloud stays alive on screen as long as `Alt` is held, gliding with your cursor.
+  - Hold `Super` and press `Space`: the cloud stays alive on screen as long as `Super` is held, gliding with your cursor.
   - Cycle through languages with snappy in-place bounces.
-  - Release `Alt` to instantly pop (**"BAH!"**) and disappear.
-- **Zero-Latency Switching**: Instant keyboard layout toggle via `Alt + Space` without annoying modal window lag.
+  - Release `Super` to instantly pop (**"BAH!"**) and disappear.
+- **Zero-Latency Switching**: Instant keyboard layout toggle via `Super + Space` without annoying modal window lag.
 - **Smart Screen Clamping**: Automatically flips inside screen bounds near display edges.
 
 ---
